@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 /* ─── Icons ───────────────────────────────────────────── */
 
@@ -40,13 +40,427 @@ function SparkleIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function FlipCameraIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
+      <path d="M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5" />
+      <polyline points="16 3 19 6 16 9" />
+      <polyline points="8 21 5 18 8 15" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function SendIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  );
+}
+
+/* ─── Chat Types ──────────────────────────────────────── */
+
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant" | "promo";
+  content: string;
+};
+
+const QUICK_QUESTIONS = [
+  "Does this suit me?",
+  "What should I change?",
+  "Rate this outfit 1-10",
+  "What shoes would go with this?",
+];
+
+const PROMO_EXCHANGE_COUNT = 3;
+const APP_LINK = "https://ubique.fashion";
+const APP_NAME = "Ubique Fashion App";
+
+/* ─── Camera Modal ────────────────────────────────────── */
+
+function CameraModal({
+  onCapture,
+  onClose,
+}: {
+  onCapture: (dataUrl: string) => void;
+  onClose: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startCamera = useCallback(async (facing: "user" | "environment") => {
+    // Stop any existing stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+    }
+    setIsReady(false);
+    setError(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play();
+          setIsReady(true);
+        };
+      }
+    } catch {
+      setError("Unable to access camera. Please allow camera permissions and try again.");
+    }
+  }, []);
+
+  useEffect(() => {
+    startCamera(facingMode);
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFlip = () => {
+    const next = facingMode === "user" ? "environment" : "user";
+    setFacingMode(next);
+    startCamera(next);
+  };
+
+  const handleCapture = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Mirror the image if using front camera
+    if (facingMode === "user") {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+
+    ctx.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+
+    // Stop stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+    }
+
+    onCapture(dataUrl);
+  };
+
+  const handleClose = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+    }
+    onClose();
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "#000",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {/* Hidden canvas for snapshot */}
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      {error ? (
+        <div style={{ color: "#fff", textAlign: "center", padding: "2rem" }}>
+          <p style={{ marginBottom: "1.5rem", fontSize: "15px", lineHeight: 1.6 }}>{error}</p>
+          <button
+            onClick={handleClose}
+            style={{
+              background: "rgba(255,255,255,0.15)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.3)",
+              borderRadius: "12px",
+              padding: "12px 28px",
+              fontSize: "15px",
+              cursor: "pointer",
+            }}
+          >
+            Go back
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Video feed */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              transform: facingMode === "user" ? "scaleX(-1)" : "none",
+            }}
+          />
+
+          {/* Loading overlay */}
+          {!isReady && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(0,0,0,0.7)",
+              }}
+            >
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  border: "3px solid rgba(255,255,255,0.2)",
+                  borderTopColor: "#fff",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          )}
+
+          {/* Top bar — close button */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              padding: "env(safe-area-inset-top, 12px) 16px 12px 16px",
+              display: "flex",
+              justifyContent: "flex-start",
+              background: "linear-gradient(to bottom, rgba(0,0,0,0.5), transparent)",
+            }}
+          >
+            <button
+              onClick={handleClose}
+              aria-label="Close camera"
+              style={{
+                background: "rgba(0,0,0,0.35)",
+                backdropFilter: "blur(8px)",
+                border: "none",
+                borderRadius: "50%",
+                width: 44,
+                height: 44,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: "#fff",
+                marginTop: 8,
+              }}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+
+          {/* Bottom controls */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              paddingBottom: "max(env(safe-area-inset-bottom, 20px), 20px)",
+              paddingTop: "24px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "36px",
+              background: "linear-gradient(to top, rgba(0,0,0,0.6), transparent)",
+            }}
+          >
+            {/* Flip camera */}
+            <button
+              onClick={handleFlip}
+              aria-label="Switch camera"
+              style={{
+                background: "rgba(255,255,255,0.15)",
+                backdropFilter: "blur(8px)",
+                border: "1px solid rgba(255,255,255,0.25)",
+                borderRadius: "50%",
+                width: 50,
+                height: 50,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: "#fff",
+              }}
+            >
+              <FlipCameraIcon />
+            </button>
+
+            {/* Shutter button */}
+            <button
+              onClick={handleCapture}
+              disabled={!isReady}
+              aria-label="Take photo"
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                border: "4px solid #fff",
+                background: isReady ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.08)",
+                cursor: isReady ? "pointer" : "default",
+                position: "relative",
+                transition: "transform 0.15s ease",
+              }}
+              onPointerDown={(e) => {
+                if (isReady) (e.currentTarget.style.transform = "scale(0.9)");
+              }}
+              onPointerUp={(e) => {
+                (e.currentTarget.style.transform = "scale(1)");
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 6,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  opacity: isReady ? 1 : 0.3,
+                  transition: "opacity 0.2s",
+                }}
+              />
+            </button>
+
+            {/* Spacer to balance layout */}
+            <div style={{ width: 50, height: 50 }} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main Page ───────────────────────────────────────── */
 
 export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [isAsking, setIsAsking] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [exchangeCount, setExchangeCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const askQuestion = useCallback(async (q: string) => {
+    if (!uploadedFile || !q.trim() || isAsking) return;
+
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: q.trim(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setIsAsking(true);
+    setQuestion("");
+
+    // Build history from existing messages (exclude promo messages)
+    const history = messages
+      .filter((m) => m.role !== "promo")
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: uploadedFile,
+          question: q.trim(),
+          history: history.length > 0 ? history : undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Something went wrong" }));
+        const errMsg: ChatMessage = {
+          id: Date.now().toString() + "_err",
+          role: "assistant",
+          content: err.error || "The fashion gods are unavailable. Try again! 😅",
+        };
+        setMessages((prev) => [...prev, errMsg]);
+      } else {
+        const data = await res.json();
+        const aiMsg: ChatMessage = {
+          id: Date.now().toString() + "_ai",
+          role: "assistant",
+          content: data.reply,
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+
+        const newCount = exchangeCount + 1;
+        setExchangeCount(newCount);
+
+        // After N exchanges, add a promo message
+        if (newCount === PROMO_EXCHANGE_COUNT) {
+          const promoMsg: ChatMessage = {
+            id: Date.now().toString() + "_promo",
+            role: "promo",
+            content: "",
+          };
+          setTimeout(() => {
+            setMessages((prev) => [...prev, promoMsg]);
+          }, 800);
+        }
+      }
+    } catch {
+      const errMsg: ChatMessage = {
+        id: Date.now().toString() + "_err",
+        role: "assistant",
+        content: "Network error — even the WiFi doesn't want to cooperate. 💀",
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setIsAsking(false);
+    }
+  }, [uploadedFile, isAsking, messages, exchangeCount]);
 
   const handleFile = useCallback((file: File) => {
     if (file && file.type.startsWith("image/")) {
@@ -79,7 +493,20 @@ export default function Home() {
   const handleDragLeave = useCallback(() => setIsDragging(false), []);
 
   const handleUploadClick = () => fileInputRef.current?.click();
-  const handleCameraClick = () => cameraInputRef.current?.click();
+
+  const handleCameraClick = () => {
+    if (navigator.mediaDevices && "getUserMedia" in navigator.mediaDevices) {
+      setShowCamera(true);
+    } else {
+      cameraInputRef.current?.click();
+    }
+  };
+
+  const handleCameraCapture = (dataUrl: string) => {
+    console.log("📸 Camera capture Base64 data URL:", dataUrl);
+    setShowCamera(false);
+    setUploadedFile(dataUrl);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -88,6 +515,14 @@ export default function Home() {
 
   return (
     <main className="min-h-dvh flex flex-col items-center px-5 pb-16 bg-[var(--clr-bg)] font-[var(--font-body)]">
+
+      {/* ── Camera Modal ──────────────────────────────── */}
+      {showCamera && (
+        <CameraModal
+          onCapture={handleCameraCapture}
+          onClose={() => setShowCamera(false)}
+        />
+      )}
 
       {/* ── Brand Header ──────────────────────────────── */}
       <header className="text-center mt-[clamp(40px,8vh,80px)] mb-3 anim-fade-up">
@@ -127,21 +562,158 @@ export default function Home() {
         <div className="absolute top-0 left-0 right-0 h-[3px] card-accent-bar opacity-40" />
 
         {uploadedFile ? (
-          /* ── Preview State ─── */
-          <div className="text-center">
-            <div className="rounded-[14px] overflow-hidden mb-5 max-h-80">
+          /* ── Preview + Chat State ─── */
+          <div>
+            <div className="rounded-[14px] overflow-hidden mb-5 max-h-60">
               <img
                 src={uploadedFile}
                 alt="Uploaded outfit"
-                className="w-full h-auto max-h-80 object-contain block"
+                className="w-full h-auto max-h-60 object-contain block"
               />
             </div>
-            <p className="text-sm text-[var(--clr-text-sec)] mb-4">
-              Looking good! Ready for style advice?
-            </p>
+
+            {/* Chat Messages Thread */}
+            {messages.length > 0 && (
+              <div
+                className="mb-4 overflow-y-auto"
+                style={{
+                  maxHeight: 320,
+                  scrollbarWidth: "thin",
+                  scrollbarColor: "rgba(0,0,0,0.1) transparent",
+                }}
+              >
+                <div className="flex flex-col gap-3">
+                  {messages.map((msg) => {
+                    if (msg.role === "promo") {
+                      return (
+                        <div
+                          key={msg.id}
+                          className="mx-auto w-full rounded-2xl p-4 text-center anim-fade-up"
+                          style={{
+                            background: "linear-gradient(135deg, rgba(109,0,204,0.08), rgba(109,0,204,0.15))",
+                            border: "1px solid rgba(109,0,204,0.2)",
+                          }}
+                        >
+                          <p className="text-sm font-semibold text-[var(--clr-text)] mb-1">
+                            ✨ Want unlimited fashion advice?
+                          </p>
+                          <p className="text-xs text-[var(--clr-text-sec)] mb-3">
+                            Get personalized style recommendations, wardrobe planning, and more on our app.
+                          </p>
+                          <a
+                            href={APP_LINK}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-[#8410CA] text-white text-sm font-semibold no-underline hover:bg-[#6d00cc] transition-colors"
+                          >
+                            <SparkleIcon />
+                            Try {APP_NAME}
+                          </a>
+                        </div>
+                      );
+                    }
+
+                    const isUser = msg.role === "user";
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${isUser ? "justify-end" : "justify-start"} anim-fade-up`}
+                      >
+                        <div
+                          className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isUser
+                              ? "bg-[#8410CA] text-white rounded-br-md"
+                              : "bg-[var(--clr-bg)] text-[var(--clr-text)] border border-[var(--clr-border)] rounded-bl-md"
+                            }`}
+                        >
+                          {!isUser && (
+                            <span className="text-xs font-semibold text-[var(--clr-accent)] block mb-1">
+                              Ubique AI
+                            </span>
+                          )}
+                          {msg.content}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Typing indicator */}
+                  {isAsking && (
+                    <div className="flex justify-start anim-fade">
+                      <div className="bg-[var(--clr-bg)] border border-[var(--clr-border)] rounded-2xl rounded-bl-md px-4 py-3">
+                        <div className="flex gap-1.5 items-center">
+                          <div className="w-2 h-2 rounded-full bg-[var(--clr-text-tri)]" style={{ animation: "pulse 1.2s ease infinite" }} />
+                          <div className="w-2 h-2 rounded-full bg-[var(--clr-text-tri)]" style={{ animation: "pulse 1.2s ease 0.2s infinite" }} />
+                          <div className="w-2 h-2 rounded-full bg-[var(--clr-text-tri)]" style={{ animation: "pulse 1.2s ease 0.4s infinite" }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={chatEndRef} />
+                </div>
+              </div>
+            )}
+
+            {/* Quick question chips (show only when no messages yet) */}
+            {messages.length === 0 && (
+              <div className="flex flex-wrap gap-2 justify-center mb-4">
+                {QUICK_QUESTIONS.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => askQuestion(q)}
+                    disabled={isAsking}
+                    className="text-[12px] px-3 py-1.5 rounded-full border border-[var(--clr-border)] text-[var(--clr-text-sec)] bg-transparent cursor-pointer font-[var(--font-body)] hover:border-[var(--clr-accent)] hover:text-[var(--clr-accent)] hover:bg-[var(--clr-accent-light)] transition-all duration-150 disabled:opacity-50 disabled:cursor-default"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Chat input */}
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    askQuestion(question);
+                  }
+                }}
+                placeholder={messages.length === 0 ? "Ask about your outfit..." : "Ask a follow-up..."}
+                disabled={isAsking}
+                className="flex-1 px-4 py-3 rounded-full border border-[var(--clr-border)] bg-[var(--clr-bg)] text-[var(--clr-text)] text-sm font-[var(--font-body)] outline-none placeholder:text-[var(--clr-text-tri)] focus:border-[var(--clr-accent)] transition-colors disabled:opacity-50"
+                id="chat-input"
+              />
+              <button
+                onClick={() => askQuestion(question)}
+                disabled={isAsking || !question.trim()}
+                className="w-11 h-11 rounded-full bg-[#8410CA] text-white border-none cursor-pointer flex items-center justify-center flex-shrink-0 transition-all duration-150 hover:bg-[#6d00cc] disabled:opacity-40 disabled:cursor-default"
+                aria-label="Send question"
+                id="send-btn"
+              >
+                {isAsking ? (
+                  <div
+                    style={{
+                      width: 16,
+                      height: 16,
+                      border: "2px solid rgba(255,255,255,0.3)",
+                      borderTopColor: "#fff",
+                      borderRadius: "50%",
+                      animation: "spin 0.8s linear infinite",
+                    }}
+                  />
+                ) : (
+                  <SendIcon />
+                )}
+              </button>
+            </div>
+
             <button
-              onClick={() => setUploadedFile(null)}
-              className="text-[13px] text-[var(--clr-accent)] bg-transparent border-none cursor-pointer font-medium underline underline-offset-[3px]"
+              onClick={() => { setUploadedFile(null); setQuestion(""); setMessages([]); setExchangeCount(0); }}
+              className="text-[13px] text-[var(--clr-accent)] bg-transparent border-none cursor-pointer font-medium underline underline-offset-[3px] block mx-auto"
             >
               Upload a different photo
             </button>
@@ -164,7 +736,7 @@ export default function Home() {
               id="file-upload"
             />
 
-            {/* Hidden camera input */}
+            {/* Hidden camera input (fallback for mobile) */}
             <input
               ref={cameraInputRef}
               type="file"
