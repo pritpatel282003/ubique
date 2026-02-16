@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import AppDownloadCTA from "./components/AppDownloadCTA";
 
 /* ─── Icons ───────────────────────────────────────────── */
 
@@ -73,7 +74,7 @@ function SendIcon({ className = "" }: { className?: string }) {
 
 type ChatMessage = {
   id: string;
-  role: "user" | "assistant" | "promo";
+  role: "user" | "assistant";
   content: string;
 };
 
@@ -84,9 +85,9 @@ const QUICK_QUESTIONS = [
   "What shoes would go with this?",
 ];
 
-const PROMO_EXCHANGE_COUNT = 3;
-const APP_LINK = "https://ubique.fashion";
-const APP_NAME = "Ubique Fashion App";
+const FIRST_PROMO_AFTER = 1;   // show modal after 1st exchange
+const REPROMO_AFTER = 3;       // reshow 3 exchanges after dismiss
+const MAX_FREE_EXCHANGES = 3;  // disable chat after this many
 
 /* ─── Camera Modal ────────────────────────────────────── */
 
@@ -381,6 +382,8 @@ export default function Home() {
   const [isAsking, setIsAsking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [exchangeCount, setExchangeCount] = useState(0);
+  const [showPromo, setShowPromo] = useState(false);
+  const [dismissedAtCount, setDismissedAtCount] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -390,8 +393,15 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleDismissPromo = useCallback(() => {
+    setShowPromo(false);
+    setDismissedAtCount(exchangeCount);
+  }, [exchangeCount]);
+
+  const chatDisabled = exchangeCount >= MAX_FREE_EXCHANGES;
+
   const askQuestion = useCallback(async (q: string) => {
-    if (!uploadedFile || !q.trim() || isAsking) return;
+    if (!uploadedFile || !q.trim() || isAsking || chatDisabled) return;
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -402,10 +412,9 @@ export default function Home() {
     setIsAsking(true);
     setQuestion("");
 
-    // Build history from existing messages (exclude promo messages)
+    // Build history from existing messages
     const history = messages
-      .filter((m) => m.role !== "promo")
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      .map((m) => ({ role: m.role, content: m.content }));
 
     try {
       const res = await fetch("/api/chat", {
@@ -438,16 +447,9 @@ export default function Home() {
         const newCount = exchangeCount + 1;
         setExchangeCount(newCount);
 
-        // After N exchanges, add a promo message
-        if (newCount === PROMO_EXCHANGE_COUNT) {
-          const promoMsg: ChatMessage = {
-            id: Date.now().toString() + "_promo",
-            role: "promo",
-            content: "",
-          };
-          setTimeout(() => {
-            setMessages((prev) => [...prev, promoMsg]);
-          }, 800);
+        // Show app download modal at the right times
+        if (newCount === FIRST_PROMO_AFTER || (dismissedAtCount !== null && newCount >= dismissedAtCount + REPROMO_AFTER)) {
+          setTimeout(() => setShowPromo(true), 600);
         }
       }
     } catch {
@@ -460,7 +462,7 @@ export default function Home() {
     } finally {
       setIsAsking(false);
     }
-  }, [uploadedFile, isAsking, messages, exchangeCount]);
+  }, [uploadedFile, isAsking, messages, exchangeCount, dismissedAtCount, chatDisabled]);
 
   const handleFile = useCallback((file: File) => {
     if (file && file.type.startsWith("image/")) {
@@ -516,13 +518,16 @@ export default function Home() {
   return (
     <main className="min-h-dvh flex flex-col items-center px-5 pb-16 bg-[var(--clr-bg)] font-[var(--font-body)]">
 
-      {/* ── Camera Modal ──────────────────────────────── */}
+      {/* ── Camera Modal ──────────────────────── */}
       {showCamera && (
         <CameraModal
           onCapture={handleCameraCapture}
           onClose={() => setShowCamera(false)}
         />
       )}
+
+      {/* ── App Download Modal ─────────────────── */}
+      {showPromo && <AppDownloadCTA onClose={handleDismissPromo} />}
 
       {/* ── Brand Header ──────────────────────────────── */}
       <header className="text-center mt-[clamp(40px,8vh,80px)] mb-3 anim-fade-up">
@@ -584,35 +589,6 @@ export default function Home() {
               >
                 <div className="flex flex-col gap-3">
                   {messages.map((msg) => {
-                    if (msg.role === "promo") {
-                      return (
-                        <div
-                          key={msg.id}
-                          className="mx-auto w-full rounded-2xl p-4 text-center anim-fade-up"
-                          style={{
-                            background: "linear-gradient(135deg, rgba(109,0,204,0.08), rgba(109,0,204,0.15))",
-                            border: "1px solid rgba(109,0,204,0.2)",
-                          }}
-                        >
-                          <p className="text-sm font-semibold text-[var(--clr-text)] mb-1">
-                            ✨ Want unlimited fashion advice?
-                          </p>
-                          <p className="text-xs text-[var(--clr-text-sec)] mb-3">
-                            Get personalized style recommendations, wardrobe planning, and more on our app.
-                          </p>
-                          <a
-                            href={APP_LINK}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-[#8410CA] text-white text-sm font-semibold no-underline hover:bg-[#6d00cc] transition-colors"
-                          >
-                            <SparkleIcon />
-                            Try {APP_NAME}
-                          </a>
-                        </div>
-                      );
-                    }
-
                     const isUser = msg.role === "user";
                     return (
                       <div
@@ -621,8 +597,8 @@ export default function Home() {
                       >
                         <div
                           className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isUser
-                              ? "bg-[#8410CA] text-white rounded-br-md"
-                              : "bg-[var(--clr-bg)] text-[var(--clr-text)] border border-[var(--clr-border)] rounded-bl-md"
+                            ? "bg-[#8410CA] text-white rounded-br-md"
+                            : "bg-[var(--clr-bg)] text-[var(--clr-text)] border border-[var(--clr-border)] rounded-bl-md"
                             }`}
                         >
                           {!isUser && (
@@ -654,8 +630,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* Quick question chips (show only when no messages yet) */}
-            {messages.length === 0 && (
+            {/* Quick question chips (show only when no messages yet and chat not disabled) */}
+            {messages.length === 0 && !chatDisabled && (
               <div className="flex flex-wrap gap-2 justify-center mb-4">
                 {QUICK_QUESTIONS.map((q) => (
                   <button
@@ -670,46 +646,63 @@ export default function Home() {
               </div>
             )}
 
-            {/* Chat input */}
-            <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    askQuestion(question);
-                  }
-                }}
-                placeholder={messages.length === 0 ? "Ask about your outfit..." : "Ask a follow-up..."}
-                disabled={isAsking}
-                className="flex-1 px-4 py-3 rounded-full border border-[var(--clr-border)] bg-[var(--clr-bg)] text-[var(--clr-text)] text-sm font-[var(--font-body)] outline-none placeholder:text-[var(--clr-text-tri)] focus:border-[var(--clr-accent)] transition-colors disabled:opacity-50"
-                id="chat-input"
-              />
-              <button
-                onClick={() => askQuestion(question)}
-                disabled={isAsking || !question.trim()}
-                className="w-11 h-11 rounded-full bg-[#8410CA] text-white border-none cursor-pointer flex items-center justify-center flex-shrink-0 transition-all duration-150 hover:bg-[#6d00cc] disabled:opacity-40 disabled:cursor-default"
-                aria-label="Send question"
-                id="send-btn"
-              >
-                {isAsking ? (
-                  <div
-                    style={{
-                      width: 16,
-                      height: 16,
-                      border: "2px solid rgba(255,255,255,0.3)",
-                      borderTopColor: "#fff",
-                      borderRadius: "50%",
-                      animation: "spin 0.8s linear infinite",
-                    }}
-                  />
-                ) : (
-                  <SendIcon />
-                )}
-              </button>
-            </div>
+            {/* Chat input OR disabled CTA */}
+            {chatDisabled ? (
+              <div className="text-center py-3 px-4 rounded-2xl mb-4 anim-fade-up" style={{ background: "rgba(132,16,202,0.06)", border: "1px solid rgba(132,16,202,0.15)" }}>
+                <p className="text-sm font-semibold text-[var(--clr-text)] mb-1">
+                  You&apos;ve used your free styling advice!
+                </p>
+                <p className="text-xs text-[var(--clr-text-sec)] mb-3">
+                  Download the app for unlimited fashion chats.
+                </p>
+                <button
+                  onClick={() => setShowPromo(true)}
+                  className="px-5 py-2 rounded-full bg-[#8410CA] text-white text-sm font-semibold border-none cursor-pointer hover:bg-[#6d00cc] transition-colors"
+                >
+                  Get the App
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      askQuestion(question);
+                    }
+                  }}
+                  placeholder={messages.length === 0 ? "Ask about your outfit..." : "Ask a follow-up..."}
+                  disabled={isAsking}
+                  className="flex-1 px-4 py-3 rounded-full border border-[var(--clr-border)] bg-[var(--clr-bg)] text-[var(--clr-text)] text-sm font-[var(--font-body)] outline-none placeholder:text-[var(--clr-text-tri)] focus:border-[var(--clr-accent)] transition-colors disabled:opacity-50"
+                  id="chat-input"
+                />
+                <button
+                  onClick={() => askQuestion(question)}
+                  disabled={isAsking || !question.trim()}
+                  className="w-11 h-11 rounded-full bg-[#8410CA] text-white border-none cursor-pointer flex items-center justify-center flex-shrink-0 transition-all duration-150 hover:bg-[#6d00cc] disabled:opacity-40 disabled:cursor-default"
+                  aria-label="Send question"
+                  id="send-btn"
+                >
+                  {isAsking ? (
+                    <div
+                      style={{
+                        width: 16,
+                        height: 16,
+                        border: "2px solid rgba(255,255,255,0.3)",
+                        borderTopColor: "#fff",
+                        borderRadius: "50%",
+                        animation: "spin 0.8s linear infinite",
+                      }}
+                    />
+                  ) : (
+                    <SendIcon />
+                  )}
+                </button>
+              </div>
+            )}
 
             <button
               onClick={() => { setUploadedFile(null); setQuestion(""); setMessages([]); setExchangeCount(0); }}
