@@ -89,6 +89,63 @@ const FIRST_PROMO_AFTER = 1;   // show modal after 1st exchange
 const REPROMO_AFTER = 3;       // reshow 3 exchanges after dismiss
 const MAX_FREE_EXCHANGES = 3;  // disable chat after this many
 
+/* ─── Markdown Renderer ─────────────────────────────── */
+
+function renderMarkdown(text: string) {
+  // Split by newlines first, then process inline formatting
+  const lines = text.split("\n");
+  return lines.map((line, lineIdx) => {
+    // Process inline markdown: **bold**, *italic*, [text](url)
+    const parts: (string | React.ReactElement)[] = [];
+    // Regex to match **bold**, *italic*, and [text](url)
+    const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|\[(.+?)\]\((.+?)\))/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(line)) !== null) {
+      // Add text before this match
+      if (match.index > lastIndex) {
+        parts.push(line.slice(lastIndex, match.index));
+      }
+
+      if (match[2]) {
+        // **bold**
+        parts.push(<strong key={`${lineIdx}-${match.index}`}>{match[2]}</strong>);
+      } else if (match[3]) {
+        // *italic*
+        parts.push(<em key={`${lineIdx}-${match.index}`}>{match[3]}</em>);
+      } else if (match[4] && match[5]) {
+        // [text](url)
+        parts.push(
+          <a
+            key={`${lineIdx}-${match.index}`}
+            href={match[5]}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--clr-accent)", textDecoration: "underline" }}
+          >
+            {match[4]}
+          </a>
+        );
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < line.length) {
+      parts.push(line.slice(lastIndex));
+    }
+
+    return (
+      <span key={lineIdx}>
+        {parts.length > 0 ? parts : line}
+        {lineIdx < lines.length - 1 && <br />}
+      </span>
+    );
+  });
+}
+
 /* ─── Camera Modal ────────────────────────────────────── */
 
 function CameraModal({
@@ -606,7 +663,7 @@ export default function Home() {
                               Ubique AI
                             </span>
                           )}
-                          {msg.content}
+                          {isUser ? msg.content : renderMarkdown(msg.content)}
                         </div>
                       </div>
                     );
