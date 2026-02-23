@@ -599,11 +599,10 @@ export default function Home() {
       {/* ── Hero Text ─────────────────────────────────── */}
       <section className="text-center max-w-[480px] mb-9 anim-fade-up [animation-delay:0.1s]">
         <h1 className="text-[30px] font-semibold leading-tight text-[var(--clr-text)] mb-4 tracking-tight">
-          Style advice that actually helps
+          Your Personal Style Advisor
         </h1>
         <p className="text-[clamp(15px,2vw,17px)] text-[var(--clr-text-sec)] leading-relaxed w-full mx-auto">
-          Upload an outfit photo and I&apos;ll tell you exactly what to change
-          — like the honest friend you bring to the fitting room.
+          Upload a photo and get honest feedback in seconds - what works, what to change, and what to wear instead.
         </p>
       </section>
 
