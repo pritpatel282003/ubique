@@ -730,7 +730,7 @@ export default function Home() {
                       askQuestion(question);
                     }
                   }}
-                  placeholder={messages.length === 0 ? "Ask about your outfit..." : "Ask a follow-up..."}
+                  placeholder={messages.length === 0 ? "Ask about your outfit..." : "Go deeper - ask about fit, styling, alternatives…"}
                   disabled={isAsking}
                   className="flex-1 px-4 py-3 rounded-full border border-[var(--clr-border)] bg-[var(--clr-bg)] text-[var(--clr-text)] text-sm font-[var(--font-body)] outline-none placeholder:text-[var(--clr-text-tri)] focus:border-[var(--clr-accent)] transition-colors disabled:opacity-50"
                   id="chat-input"
